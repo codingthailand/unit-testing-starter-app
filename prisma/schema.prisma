@@ -8,16 +8,21 @@ datasource db {
 }
 
 model User {
-  id            String    @id
+  id            String           @id
   name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false)
-  role          String    @default("user")
+  email         String           @unique
+  emailVerified Boolean          @default(false)
+  role          String           @default("user")
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
   accounts      Account[]
   sessions      Session[]
+  orders        Order[]
+  enrollments   Enrollment[]
+  progress      LessonProgress[]
+  certificates  Certificate[]
+  reviews       Review[]
 
   @@map("user")
 }
@@ -69,64 +74,167 @@ model Verification {
   @@map("verification")
 }
 
-model categories {
-  id       Int        @id @default(autoincrement())
-  name     String?
-  products products[]
-}
+// ===== โดเมนแพลตฟอร์มขายคอร์ส =====
+// จำนวนเงินทุกฟิลด์เก็บเป็น Int หน่วย "สตางค์" (1 บาท = 100) เพื่อเลี่ยงปัญหา floating point
+// ฟิลด์สถานะเก็บเป็น String ค่าที่อนุญาตกำหนดไว้ใน src/lib/shared/status.ts
 
-model customers {
+model Category {
   id      Int      @id @default(autoincrement())
-  name    String?
-  address String?
-  phone   String?
-  orders  orders[]
+  name    String
+  slug    String   @unique
+  courses Course[]
+
+  @@map("categories")
 }
 
-model order_items {
-  id         Int      @id @default(autoincrement())
-  order_id   Int
-  product_id Int
-  quantity   Int
-  price      Float
-  orders     orders   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  products   products @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([order_id])
-  @@index([product_id])
-}
-
-model orders {
+model Course {
   id           Int           @id @default(autoincrement())
-  date         DateTime?
-  customer_id  Int?
-  status       String?
-  total_amount Float?
-  order_items  order_items[]
-  customers    customers?    @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  slug         String        @unique
+  title        String
+  summary      String
+  description  String
+  priceSatang  Int
+  /// BEGINNER | INTERMEDIATE | ADVANCED
+  level        String
+  imageName    String
+  isPublished  Boolean       @default(true)
+  categoryId   Int
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  category     Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  lessons      Lesson[]
+  orderItems   OrderItem[]
+  enrollments  Enrollment[]
+  reviews      Review[]
+  certificates Certificate[]
 
-  @@index([customer_id])
+  @@index([categoryId])
+  @@map("courses")
 }
 
-model product_images {
-  id         Int       @id @default(autoincrement())
-  product_id Int
-  image_name String
-  created_at DateTime? @default(now())
-  products   products  @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+model Lesson {
+  id              Int              @id @default(autoincrement())
+  courseId        Int
+  title           String
+  youtubeId       String
+  durationMinutes Int
+  position        Int
+  isPreview       Boolean          @default(false)
+  course          Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress        LessonProgress[]
 
-  @@index([product_id])
+  @@unique([courseId, position])
+  @@map("lessons")
 }
 
-model products {
-  id             Int              @id @default(autoincrement())
-  name           String?
-  description    String?
-  price          Float?
-  category_id    Int?
-  order_items    order_items[]
-  product_images product_images[]
-  categories     categories?      @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+model Coupon {
+  id                Int      @id @default(autoincrement())
+  code              String   @unique
+  /// PERCENT | FIXED
+  type              String
+  /// PERCENT: 1-100, FIXED: สตางค์
+  value             Int
+  maxDiscountSatang Int?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  orders            Order[]
 
-  @@index([category_id])
+  @@map("coupons")
+}
+
+model Order {
+  id             Int         @id @default(autoincrement())
+  userId         String
+  /// PENDING | PAID | FAILED
+  status         String
+  subtotalSatang Int
+  discountSatang Int
+  totalSatang    Int
+  couponId       Int?
+  paymentRef     String?
+  paidAt         DateTime?
+  createdAt      DateTime    @default(now())
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coupon         Coupon?     @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items          OrderItem[]
+
+  @@index([userId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id             Int         @id @default(autoincrement())
+  orderId        Int
+  courseId       Int
+  priceSatang    Int
+  discountSatang Int
+  paidSatang     Int
+  /// PENDING | PAID | REFUNDED (item ของ order ที่ FAILED จะค้างเป็น PENDING)
+  status         String
+  refundedAt     DateTime?
+  order          Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// Restrict: คอร์สที่ขายไปแล้วลบไม่ได้ ให้ยกเลิกการเผยแพร่แทน
+  course         Course      @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  enrollment     Enrollment?
+
+  @@index([orderId])
+  @@index([courseId])
+  @@map("order_items")
+}
+
+model Enrollment {
+  id          Int        @id @default(autoincrement())
+  userId      String
+  courseId    Int
+  /// null = ลงทะเบียนคอร์สฟรี (ไม่มี order)
+  orderItemId Int?       @unique
+  /// ACTIVE | REVOKED
+  status      String
+  enrolledAt  DateTime
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course      Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  orderItem   OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, courseId])
+  @@map("enrollments")
+}
+
+model LessonProgress {
+  userId      String
+  lessonId    Int
+  completedAt DateTime
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@id([userId, lessonId])
+  @@map("lesson_progress")
+}
+
+model Certificate {
+  id       Int      @id @default(autoincrement())
+  code     String   @unique
+  userId   String
+  courseId Int
+  issuedAt DateTime
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@map("certificates")
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  courseId  Int
+  rating    Int
+  comment   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+  @@map("reviews")
 }
