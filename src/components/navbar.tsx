@@ -1,64 +1,57 @@
-import { Button } from "@/components/ui/button";
+import { ShoppingCart } from "lucide-react";
+import Link from "next/link";
+import CartCount from "@/components/cart-count";
 import { Logo } from "@/components/logo";
 import { NavMenu } from "@/components/nav-menu";
 import { NavigationSheet } from "@/components/navigation-sheet";
-import Link from "next/link";
-import { Badge } from "./ui/badge";
-import { ShoppingBasket } from "lucide-react";
-import CountCartItem from "@/app/(front)/components/CountCartItem";
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
-import LogoutButton from "./logout-button";
+import { ThemeToggle } from "@/components/theme-toggle";
+import UserMenu from "@/components/user-menu";
+import { Button } from "@/components/ui/button";
+import { getSessionUser } from "@/lib/auth/session";
 
 const Navbar = async () => {
-  const session = await auth.api.getSession({
-    headers: await headers()
-  });
+  const user = await getSessionUser();
 
   return (
-    <nav className="h-16 border-b bg-background">
-      <div className="mx-auto flex h-full max-w-(--breakpoint-xl) items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Logo />
+    <nav className="sticky top-0 z-40 print:hidden h-16 border-b bg-background/80 backdrop-blur">
+      <div className="mx-auto flex h-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-6">
+          <Logo />
+          {/* Desktop Menu */}
+          <NavMenu className="hidden lg:block" />
+        </div>
 
-        {/* Desktop Menu */}
-        <NavMenu className="hidden md:block" />
+        <div className="flex items-center gap-2">
+          <Button asChild className="relative" size="icon" variant="ghost">
+            <Link aria-label="ตะกร้า" data-testid="nav-cart" href="/cart">
+              <ShoppingCart className="size-5" />
+              <span className="-top-0.5 -right-0.5 absolute flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                <CartCount />
+              </span>
+            </Link>
+          </Button>
 
-        <Link href="/cart" data-testid="nav-cart">
-          <Badge className="p-2 text-md">
-            <ShoppingBasket /> <CountCartItem /> ชิ้น
-          </Badge>
-        </Link>
+          <ThemeToggle />
 
-        <div className="flex items-center gap-3">
-          
-          {
-            !session && (
-              <>
-                <Button asChild className="hidden sm:inline-flex" variant="outline">
-                  <Link href="/login" data-testid="nav-login">เข้าสู่ระบบ</Link>
-                </Button>
-                <Button asChild>
-                  <Link href="/signup" data-testid="nav-signup">สมัครสมาชิก</Link>
-                </Button>
-              </>
-            )
-          }
+          {!user && (
+            <>
+              <Button asChild className="hidden sm:inline-flex" variant="ghost">
+                <Link data-testid="nav-login" href="/login">
+                  เข้าสู่ระบบ
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link data-testid="nav-signup" href="/signup">
+                  สมัครสมาชิก
+                </Link>
+              </Button>
+            </>
+          )}
 
-          {
-            session && (
-              <>
-                <div className="flex items-center mr-4" data-testid="nav-user-name">
-                  สวัสดี, {session.user.name}
-                </div>
-                <div>
-                  <LogoutButton />
-                </div>
-              </>
-            )
-          }
+          {user && <UserMenu email={user.email} isAdmin={user.role === "admin"} name={user.name} />}
 
           {/* Mobile Menu */}
-          <div className="md:hidden">
+          <div className="lg:hidden">
             <NavigationSheet />
           </div>
         </div>

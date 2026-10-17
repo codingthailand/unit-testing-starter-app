@@ -121,8 +121,7 @@ async function main() {
     })
   }
 
-  const coupons = []
-  for (const coupon of COUPONS) coupons.push(await prisma.coupon.create({ data: { ...coupon } }))
+  const coupons = await Promise.all(COUPONS.map((coupon) => prisma.coupon.create({ data: { ...coupon } })))
   const welcome = coupons.find((coupon) => coupon.code === "WELCOME20")!
   const save200 = coupons.find((coupon) => coupon.code === "SAVE200")!
 

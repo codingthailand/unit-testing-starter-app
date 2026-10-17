@@ -2,9 +2,11 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Prompt, Roboto, Lora } from "next/font/google";
 import { cn } from "@/lib/utils";
+import Footer from "@/components/footer";
 import Navbar from "@/components/navbar";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { ThemeProvider } from "@/components/theme-provider";
 import "../globals.css";
 
 // TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
@@ -23,8 +25,11 @@ export const promptFont = Prompt({
 
 
 export const metadata: Metadata = {
-  title: "ระบบ E-Commerce CodingThailand",
-  description: "เรียนรู้การเขียน Nex.tjs",
+  title: {
+    default: "CodingThailand Academy — คอร์สออนไลน์",
+    template: "%s | CodingThailand Academy",
+  },
+  description: "แพลตฟอร์มเรียนคอร์สออนไลน์ด้านการพัฒนาซอฟต์แวร์และ Software Testing",
 };
 
 export default function RootLayout({
@@ -35,14 +40,18 @@ export default function RootLayout({
   return (
     <html
       lang="th"
+      suppressHydrationWarning
       className={cn(promptFont.className, "font-sans", roboto.variable, loraHeading.variable)}
     >
-      <body>
-        <Suspense fallback={<div className="h-16 border-b bg-background" />}>
-          <Navbar />
-        </Suspense>
-        {children}
-        <ToastContainer position="top-right" autoClose={3000} theme="colored" />
+      <body className="flex min-h-screen flex-col">
+        <ThemeProvider>
+          <Suspense fallback={<div className="h-16 border-b bg-background" />}>
+            <Navbar />
+          </Suspense>
+          <div className="flex-1">{children}</div>
+          <Footer />
+          <ToastContainer position="top-right" autoClose={3000} theme="colored" />
+        </ThemeProvider>
       </body>
     </html>
   );

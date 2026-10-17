@@ -10,34 +10,25 @@ import {
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
 
+export const NAV_LINKS = [
+  { href: "/courses", label: "คอร์สทั้งหมด", testId: "nav-courses" },
+  { href: "/free-courses", label: "คอร์สฟรี", testId: "nav-free-courses" },
+  { href: "/my-courses", label: "คอร์สของฉัน", testId: "nav-my-courses" },
+  { href: "/about", label: "เกี่ยวกับเรา", testId: "nav-about" },
+] as const;
+
 export const NavMenu = (props: ComponentProps<typeof NavigationMenu>) => (
   <NavigationMenu {...props}>
     <NavigationMenuList className="data-[orientation=vertical]:-ms-2 data-[orientation=vertical]:flex-col data-[orientation=vertical]:items-start data-[orientation=vertical]:justify-start">
-      <NavigationMenuItem>
-        <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-          <Link href="/">หน้าหลัก</Link>
-        </NavigationMenuLink>
-      </NavigationMenuItem>
-      <NavigationMenuItem>
-        <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-          <Link href="/course">หลักสูตร</Link>
-        </NavigationMenuLink>
-      </NavigationMenuItem>
-      <NavigationMenuItem>
-        <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-          <Link href="/about">เกี่ยวกับเรา</Link>
-        </NavigationMenuLink>
-      </NavigationMenuItem>
-      <NavigationMenuItem>
-        <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-          <Link href="/product">สินค้า</Link>
-        </NavigationMenuLink>
-      </NavigationMenuItem>
-      <NavigationMenuItem>
-        <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-          <Link href="/contact">ติดต่อเรา</Link>
-        </NavigationMenuLink>
-      </NavigationMenuItem>
+      {NAV_LINKS.map((link) => (
+        <NavigationMenuItem key={link.href}>
+          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
+            <Link data-testid={link.testId} href={link.href}>
+              {link.label}
+            </Link>
+          </NavigationMenuLink>
+        </NavigationMenuItem>
+      ))}
     </NavigationMenuList>
   </NavigationMenu>
 );

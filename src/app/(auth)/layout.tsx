@@ -3,6 +3,7 @@ import { Prompt, Roboto, Lora } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { ThemeProvider } from "@/components/theme-provider";
 import "../globals.css";
 
 // TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
@@ -21,8 +22,8 @@ export const promptFont = Prompt({
 
 
 export const metadata: Metadata = {
-  title: "ระบบ ล็อกอิน",
-  description: "เรียนรู้การเขียน Nex.tjs",
+  title: "เข้าสู่ระบบ | CodingThailand Academy",
+  description: "เข้าสู่ระบบหรือสมัครสมาชิก CodingThailand Academy",
 };
 
 export default function AuthLayout({
@@ -33,11 +34,14 @@ export default function AuthLayout({
   return (
     <html
       lang="th"
+      suppressHydrationWarning
       className={cn(promptFont.className, "font-sans", roboto.variable, loraHeading.variable)}
     >
       <body>
-        {children}
-        <ToastContainer position="top-right" autoClose={3000} theme="colored" />
+        <ThemeProvider>
+          {children}
+          <ToastContainer position="top-right" autoClose={3000} theme="colored" />
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -22,6 +22,7 @@ import { authClient } from "@/lib/auth-client"
 import { loginSchema, type LoginFormValues } from "@/lib/auth-schema"
 import { useRouter } from "next/navigation"
 import { toast } from "react-toastify"
+import { safeRedirectPath } from "@/lib/shared/redirect"
 
 export default function LoginForm() {
   const router = useRouter();
@@ -40,7 +41,12 @@ export default function LoginForm() {
          }, {
             onSuccess: () => {
               toast.success('เข้าระบบสำเร็จ');
-              setTimeout(() => router.replace('/'), 1200);
+              // กลับไปหน้าที่ผู้ใช้ตั้งใจจะเข้า (เช่น /checkout) — กัน open redirect ด้วย safeRedirectPath
+              const next = safeRedirectPath(new URLSearchParams(window.location.search).get("next"));
+              setTimeout(() => {
+                router.replace(next);
+                router.refresh();
+              }, 800);
             },
             onError: (ctx) => {
               toast.error(ctx.error.message ?? JSON.stringify(ctx.error));
