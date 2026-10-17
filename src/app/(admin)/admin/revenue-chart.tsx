@@ -1,16 +1,20 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DEFAULT_PERIOD, PERIODS, type Period } from "@/lib/admin/period";
-import { formatTHB, satangToBaht } from "@/lib/shared/money";
+import { formatTHB } from "@/lib/shared/money";
 import type { RevenueResponse } from "@/types/admin";
 
 const PERIOD_LABELS: Record<Period, string> = { "7d": "7 วัน", "30d": "30 วัน", "90d": "90 วัน" };
 
-const shortDate = new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short", timeZone: "UTC" });
+// recharts มีขนาดใหญ่ — โหลดเฉพาะตอนจะวาดกราฟ ไม่ให้ถ่วง bundle แรกของหน้า
+const RevenueBarChart = dynamic(() => import("./revenue-bar-chart"), {
+  ssr: false,
+  loading: () => <Skeleton className="size-full" />,
+});
 
 /** กราฟรายได้รายวัน — ดึงจาก GET /api/admin/revenue */
 export default function RevenueChart() {
@@ -59,27 +63,7 @@ export default function RevenueChart() {
         ) : !data ? (
           <Skeleton className="size-full" />
         ) : (
-          <ResponsiveContainer height="100%" width="100%">
-            <BarChart data={data.points.map((point) => ({ ...point, baht: satangToBaht(point.totalSatang) }))}>
-              <CartesianGrid stroke="var(--border)" vertical={false} />
-              <XAxis
-                axisLine={false}
-                dataKey="date"
-                fontSize={12}
-                minTickGap={16}
-                tickFormatter={(value: string) => shortDate.format(new Date(`${value}T00:00:00Z`))}
-                tickLine={false}
-              />
-              <YAxis axisLine={false} fontSize={12} tickFormatter={(value: number) => `฿${value.toLocaleString("th-TH")}`} tickLine={false} width={72} />
-              <Tooltip
-                contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
-                cursor={{ fill: "var(--muted)" }}
-                formatter={(value) => [formatTHB(Number(value) * 100), "รายได้"]}
-                labelFormatter={(value) => shortDate.format(new Date(`${value}T00:00:00Z`))}
-              />
-              <Bar dataKey="baht" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <RevenueBarChart points={data.points} />
         )}
       </div>
     </section>

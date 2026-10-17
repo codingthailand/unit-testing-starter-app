@@ -1,19 +1,22 @@
 import "server-only"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { cache } from "react"
 import { auth } from "@/lib/auth"
 import { authorizeAdmin, authorizeUser, type SessionUser } from "./authorize"
 
 /**
  * adapter ระหว่าง Better Auth / Next.js กับกฎสิทธิ์ (authorize.ts ที่เป็น pure)
  * ไฟล์นี้เป็นที่เดียวที่ใช้ headers() / redirect() เรื่องสิทธิ์
+ *
+ * ห่อด้วย cache() — Navbar กับหน้าเรียกซ้ำใน request เดียวกัน จะ query session แค่ครั้งเดียว
  */
-export async function getSessionUser(): Promise<SessionUser | null> {
+export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session) return null
   const { id, name, email, role } = session.user
   return { id, name, email, role: role ?? "user" }
-}
+})
 
 /** ใช้ในหน้า: ไม่ login → /login?next=... */
 export async function requireUser(next: string): Promise<SessionUser> {

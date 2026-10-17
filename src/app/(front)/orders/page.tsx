@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { requireUser } from "@/lib/auth/session";
 import { services } from "@/lib/container";
+import { REFUND_MAX_PROGRESS_PERCENT, REFUND_WINDOW_DAYS } from "@/lib/refund/refund-policy";
 import { OrderCard } from "./order-card";
 
 // TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
@@ -44,7 +45,7 @@ async function OrderList() {
 export default function OrdersPage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
-      <PageHeader description="ขอคืนเงินได้รายคอร์ส ภายใน 7 วันหลังชำระเงิน และเรียนไปไม่เกิน 20%" title="ประวัติการสั่งซื้อ" />
+      <PageHeader description={`ขอคืนเงินได้รายคอร์ส ภายใน ${REFUND_WINDOW_DAYS} วันหลังชำระเงิน และเรียนไปไม่เกิน ${REFUND_MAX_PROGRESS_PERCENT}%`} title="ประวัติการสั่งซื้อ" />
       <div className="mt-8">
         <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
           <OrderList />
