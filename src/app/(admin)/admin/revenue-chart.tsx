@@ -10,11 +10,11 @@ import type { RevenueResponse } from "@/types/admin";
 
 const PERIOD_LABELS: Record<Period, string> = { "7d": "7 วัน", "30d": "30 วัน", "90d": "90 วัน" };
 
-// recharts มีขนาดใหญ่ — โหลดเฉพาะตอนจะวาดกราฟ ไม่ให้ถ่วง bundle แรกของหน้า
-const RevenueBarChart = dynamic(() => import("./revenue-bar-chart"), {
-  ssr: false,
-  loading: () => <Skeleton className="size-full" />,
-});
+const chartSkeleton = <Skeleton className="size-full" />;
+
+// recharts มีขนาดใหญ่ — แยก chunk ไม่ให้ถ่วง bundle แรกของหน้า
+const loadBarChart = () => import("./revenue-bar-chart");
+const RevenueBarChart = dynamic(loadBarChart, { ssr: false, loading: () => chartSkeleton });
 
 /** กราฟรายได้รายวัน — ดึงจาก GET /api/admin/revenue */
 export default function RevenueChart() {
@@ -24,6 +24,7 @@ export default function RevenueChart() {
 
   useEffect(() => {
     let cancelled = false;
+    void loadBarChart(); // โหลด chunk กราฟพร้อมกับดึงข้อมูล ไม่ต้องรอให้ข้อมูลมาก่อน
     fetch(`/api/admin/revenue?period=${period}`)
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
       .then((body: RevenueResponse) => {
@@ -61,7 +62,7 @@ export default function RevenueChart() {
         {error ? (
           <p className="text-destructive text-sm">โหลดข้อมูลรายได้ไม่สำเร็จ</p>
         ) : !data ? (
-          <Skeleton className="size-full" />
+          chartSkeleton
         ) : (
           <RevenueBarChart points={data.points} />
         )}
