@@ -4,6 +4,7 @@ import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useTransition } from "react";
 import { toast } from "react-toastify";
+import { useActionFormSubmit } from "@/hooks/use-action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -15,6 +16,7 @@ export default function LessonManager({ courseId, lessons }: { courseId: number;
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState(addLessonAction.bind(null, courseId), null);
+  const onSubmit = useActionFormSubmit(formAction);
   const [deleting, startDelete] = useTransition();
   const errors = state && !state.ok ? state.fieldErrors : undefined;
   const nextPosition = Math.max(0, ...lessons.map((lesson) => lesson.position)) + 1;
@@ -76,7 +78,7 @@ export default function LessonManager({ courseId, lessons }: { courseId: number;
         </TableBody>
       </Table>
 
-      <form action={formAction} className="grid gap-4 border-t pt-4 md:grid-cols-[80px_1fr_160px_100px_auto_auto] md:items-end" ref={formRef}>
+      <form onSubmit={onSubmit} className="grid gap-4 border-t pt-4 md:grid-cols-[80px_1fr_160px_100px_auto_auto] md:items-end" ref={formRef}>
         <FormField errors={errors} label="ลำดับ" name="position">
           <Input data-testid="lesson-position-input" defaultValue={nextPosition} id="position" key={nextPosition} name="position" type="number" />
         </FormField>

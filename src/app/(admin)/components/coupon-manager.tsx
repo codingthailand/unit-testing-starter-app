@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "react-toastify";
+import { useActionFormSubmit } from "@/hooks/use-action-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -25,6 +26,7 @@ export default function CouponManager({ coupons }: { coupons: CouponListItem[] }
   const formRef = useRef<HTMLFormElement>(null);
   const [type, setType] = useState<CouponType>("PERCENT");
   const [state, formAction, pending] = useActionState(createCouponAction, null);
+  const onSubmit = useActionFormSubmit(formAction);
   const [toggling, startToggle] = useTransition();
   const errors = state && !state.ok ? state.fieldErrors : undefined;
 
@@ -48,7 +50,7 @@ export default function CouponManager({ coupons }: { coupons: CouponListItem[] }
 
   return (
     <div className="space-y-6">
-      <form action={formAction} className="grid gap-4 rounded-xl border bg-card p-6 md:grid-cols-5 md:items-end" data-testid="coupon-form" ref={formRef}>
+      <form onSubmit={onSubmit} className="grid gap-4 rounded-xl border bg-card p-6 md:grid-cols-5 md:items-end" data-testid="coupon-form" ref={formRef}>
         <FormField errors={errors} label="โค้ด" name="code">
           <Input className="uppercase" data-testid="coupon-code-input" id="code" name="code" placeholder="SUMMER10" />
         </FormField>

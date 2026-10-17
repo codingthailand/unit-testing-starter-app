@@ -1,6 +1,8 @@
-# ระบบ E-Commerce CodingThailand
+# CodingThailand Academy — แพลตฟอร์มขายคอร์สออนไลน์
 
-เว็บแอปตัวอย่างสำหรับเรียนการเขียน Next.js — มีระบบสมาชิก ตะกร้าสินค้า รายการสินค้า และฟอร์มติดต่อ
+แอปตัวอย่างสำหรับคอร์ส **Software Testing / Unit Testing** — ขายคอร์ส, ตะกร้า + คูปอง, ชำระเงิน (จำลอง), คืนเงินรายคอร์ส, เรียนพร้อมติดตามความคืบหน้า, ใบประกาศนียบัตร, รีวิว และระบบหลังบ้าน
+
+โค้ดออกแบบมาให้ **เขียนเทสต์ได้ง่าย** (pure function + repository pattern + dependency injection) และมีเอกสารออกแบบ test case ที่ [`docs/requirements/user-stories-and-test-cases.md`](docs/requirements/user-stories-and-test-cases.md)
 
 สร้างด้วย Next.js 16 (App Router) + React 19, Prisma 7 + SQLite, Better Auth, shadcn/ui และ Tailwind CSS v4
 
@@ -68,21 +70,21 @@ npx prisma generate    # สร้าง Prisma Client ไปที่ generated
 npx prisma db push     # สร้างไฟล์ prisma/dev.db พร้อมตารางทั้งหมด
 ```
 
-### 6. ใส่ข้อมูลสินค้าตัวอย่าง (แนะนำ)
-
-ถ้าข้ามขั้นนี้ ฐานข้อมูลจะว่างเปล่า หน้า `/product` จะไม่มีสินค้าแสดง และส่วน "สินค้าแนะนำ" บนหน้าแรกจะหายไปทั้งบล็อก
+### 6. ใส่ข้อมูลตัวอย่าง (แนะนำ)
 
 ```bash
-sqlite3 prisma/dev.db < docs/insert_data_ecom_example_50_products.sql
+npm run db:seed
 ```
 
-จะได้สินค้า 50 รายการ, 5 หมวดหมู่, ลูกค้าและคำสั่งซื้อตัวอย่าง
+จะได้ 5 หมวดหมู่, 13 คอร์ส (มีคอร์สฟรี 1 และฉบับร่าง 1), บทเรียน ~75 บท, คูปอง 3 ใบ, ผู้ใช้ 22 คน และคำสั่งซื้อย้อนหลัง 90 วันนับจากวันที่รัน (ให้กราฟรายได้มีข้อมูล)
 
-> Windows หรือเครื่องที่ไม่มีคำสั่ง `sqlite3` ใช้คำสั่งนี้แทน:
->
-> ```bash
-> node -e "const D=require('better-sqlite3'),f=require('fs');new D('prisma/dev.db').exec(f.readFileSync('docs/insert_data_ecom_example_50_products.sql','utf8'))"
-> ```
+| บัญชีตัวอย่าง | รหัสผ่าน | หมายเหตุ |
+|---|---|---|
+| `admin@example.com` | `password123` | ผู้ดูแลระบบ เข้า `/admin` ได้ |
+| `user@example.com` | `password123` | ซื้อคอร์ส React ไว้ 2 วันก่อน เรียนไป 1 บท (ยังขอคืนเงินได้) |
+| `student01…20@example.com` | `password123` | ลูกค้าที่มีประวัติการสั่งซื้อ |
+
+> รัน `npm run db:seed` ซ้ำได้ — จะลบข้อมูลคอร์ส/คำสั่งซื้อ และผู้ใช้ `@example.com` เดิมก่อนใส่ใหม่
 
 ### 7. รันเซิร์ฟเวอร์
 
@@ -92,7 +94,58 @@ npm run dev
 
 เปิด [http://localhost:3000](http://localhost:3000) ในเบราว์เซอร์
 
-ลองสมัครสมาชิกที่ `/signup` แล้วเข้าสู่ระบบที่ `/login` และดูรายการสินค้าที่ `/product`
+> ถ้ารันพอร์ตอื่น ต้องตั้ง `BETTER_AUTH_URL` ให้ตรงด้วย ไม่งั้น login จะขึ้น `Invalid origin` เช่น
+> `BETTER_AUTH_URL=http://localhost:3100 npm run dev -- -p 3100`
+
+---
+
+## ฟีเจอร์และกติกาทางธุรกิจ (โจทย์สำหรับเขียนเทสต์)
+
+| เรื่อง | กติกา | ไฟล์หลัก |
+|---|---|---|
+| เงิน | เก็บเป็น **สตางค์ (Int)** ทุกที่ แสดงผลด้วย `formatTHB` | `src/lib/shared/money.ts` |
+| คูปอง | `PERCENT` (ปัดลงเป็นสตางค์ + เพดานส่วนลด) / `FIXED` ส่วนลดไม่เกินยอดรวม, 1 ใบต่อคำสั่งซื้อ | `src/lib/coupon/coupon-rules.ts` |
+| กระจายส่วนลด | แบ่งตามสัดส่วนราคา เศษสตางค์ไปรายการสุดท้าย | `src/lib/checkout/allocate-discount.ts` |
+| ชำระเงิน | Fake gateway: `4242424242424242` ผ่าน, `4000000000000002` ถูกปฏิเสธ, `4000000000000119` ระบบล่ม | `src/lib/payment/` |
+| คืนเงิน | รายคอร์ส ภายใน **7 วัน** และเรียน **ไม่เกิน 20%** | `src/lib/refund/refund-policy.ts` |
+| ความคืบหน้า | `floor(จบ / ทั้งหมด × 100)` ครบ 100% ออกใบประกาศ `CT-YYYY-XXXXXX` | `src/lib/learning/` |
+| รีวิว | เฉพาะผู้ลงทะเบียน 1 คน 1 รีวิว/คอร์ส คะแนน 1–5 ความยาว 10–1000 | `src/lib/review/` |
+| คอร์สฟรี | ดึงจาก API ภายนอก timeout 5 วินาที ล่มแล้วไม่พัง | `src/lib/free-course/` |
+| รายได้รายวัน | นับเฉพาะ item ที่ PAID แบ่งวันตามเวลาไทย | `src/lib/admin/revenue.ts` |
+
+## หน้าเว็บ
+
+| หน้า | คำอธิบาย |
+|---|---|
+| `/` | หน้าแรก หมวดหมู่ คอร์สยอดนิยม |
+| `/courses` | ค้นหา กรองหมวด/ระดับ เรียงลำดับ |
+| `/courses/[slug]` | รายละเอียด หลักสูตร (บทแรกดูฟรี) รีวิว ปุ่มเพิ่มลงตะกร้า |
+| `/cart` → `/checkout` | ตะกร้า (เก็บใน localStorage) ใช้คูปอง ชำระเงิน (ต้อง login) |
+| `/orders`, `/orders/[id]` | ประวัติการสั่งซื้อ ขอคืนเงินรายคอร์ส |
+| `/my-courses` | คอร์สที่ลงทะเบียนพร้อม progress |
+| `/learn/[slug]/[lessonId]` | ดูวิดีโอ กด "เรียนจบบทนี้" |
+| `/certificates/[code]` | ใบประกาศ (เปิดได้ไม่ต้อง login, พิมพ์ได้) |
+| `/free-courses` | คอร์สฟรีจาก `api.codingthailand.com` |
+| `/admin` | แดชบอร์ด กราฟรายได้ 7/30/90 วัน, จัดการคอร์ส/บทเรียน/คูปอง, คำสั่งซื้อ |
+
+---
+
+## โครงสร้างโค้ด (ออกแบบให้เทสต์ได้)
+
+```
+src/lib/<feature>/
+  *-rules.ts / *-policy.ts / progress.ts ...   ← pure function: กฎทางธุรกิจ ไม่แตะ DB/เวลา/สุ่ม/env
+  *-repository.ts                              ← interface + createPrismaXxxRepository(db)
+  *-service.ts                                 ← createXxxService(deps) รู้จักแค่ interface
+src/lib/validation/                            ← zod schema แยกจาก component
+src/lib/repositories.ts                        ← รวม repository + UnitOfWork (transaction)
+src/lib/container.ts                           ← composition root: ประกอบของจริงเข้าด้วยกัน
+src/app/**/actions.ts, src/app/api/**          ← shell บาง ๆ: ตรวจสิทธิ์ → parse → เรียก service
+```
+
+- business error ไม่ throw แต่คืน `Result` ที่มี `error.code` (รายการทั้งหมดใน `src/lib/shared/errors.ts`)
+- เวลาใช้ `Clock` ที่ inject ได้ (`fixedClock("2026-10-01T10:00:00+07:00")` ตอนเทสต์)
+- ปุ่ม/ช่องกรอกทุกจุดมี `data-testid` สำหรับ E2E
 
 ---
 
@@ -101,17 +154,19 @@ npm run dev
 | งาน | คำสั่ง |
 |-----|--------|
 | รัน dev server | `npm run dev` |
-| รัน dev server พอร์ตอื่น | `npm run dev -- -p 3100` |
 | Build สำหรับ production | `npm run build` |
 | รันตัวที่ build แล้ว | `npm start` |
 | ตรวจ lint | `npm run lint` |
+| ตรวจ type | `npx tsc --noEmit` |
 | สร้าง Prisma Client ใหม่ | `npx prisma generate` |
 | อัปเดตโครงสร้างฐานข้อมูล | `npx prisma db push` |
-| สร้างฐานข้อมูลสำหรับทดสอบ | `npm run db:test:setup` |
-| ใส่คำสั่งซื้อย้อนหลัง 90 วัน | `npm run db:seed:orders` |
+| ใส่ข้อมูลตัวอย่าง | `npm run db:seed` |
+| สร้างฐานข้อมูลสำหรับทดสอบ (`prisma/test.db`) | `npm run db:test:setup` (`-- --empty` = ตารางเปล่า) |
 | เปิดดู/แก้ข้อมูลผ่าน GUI | `npx prisma studio` |
 
-> โปรเจกต์นี้ยังไม่มีการตั้งค่า test framework แต่โครงสร้างโค้ดเตรียมไว้ให้เขียนเทสต์ได้แล้ว (ดูหัวข้อถัดไป)
+> โปรเจกต์นี้ **ยังไม่ติดตั้ง test framework โดยตั้งใจ** — การติดตั้ง Vitest/Playwright เป็นส่วนหนึ่งของเนื้อหาคอร์ส
+
+> **อัปเกรดจากเวอร์ชันร้านค้าเดิม:** schema เปลี่ยนทั้งหมด ให้ลบ `prisma/dev.db` เดิม (หรือสำรองไว้) แล้วรัน `npx prisma db push` และ `npm run db:seed` ใหม่
 
 ---
 
@@ -121,13 +176,8 @@ npm run dev
 |--------|--------|----------|
 | `DATABASE_URL` | ✅ | ตำแหน่งไฟล์ SQLite ตั้งค่ามาให้แล้วเป็น `file:./prisma/dev.db` |
 | `BETTER_AUTH_SECRET` | ✅ | กุญแจเข้ารหัส session ต้องสุ่มเอง (ดูขั้นตอนที่ 3) |
-| `BETTER_AUTH_URL` | ✅ | URL ของเว็บ ตอนพัฒนาคือ `http://localhost:3000` |
-| `RESEND_API_KEY` | ❌ | ใช้เฉพาะให้ฟอร์มติดต่อส่งอีเมลได้จริง |
-| `CONTACT_FROM_EMAIL` | ❌ | อีเมลผู้ส่งของฟอร์มติดต่อ |
-| `CONTACT_TO_EMAIL` | ❌ | อีเมลผู้รับของฟอร์มติดต่อ |
-| `COURSE_API_URL` | ❌ | ชี้ API หลักสูตรไปที่อื่น ใช้ตอนรัน e2e ถ้าไม่ตั้งจะใช้ API จริง |
-
-ถ้าไม่ตั้งค่า 3 ตัวล่าง ฟอร์มติดต่อจะยังใช้งานได้ตามปกติ แต่ตอนกดส่งจะขึ้นข้อความว่ายังไม่ได้ตั้งค่าการส่งอีเมล
+| `BETTER_AUTH_URL` | ✅ | URL ของเว็บ ตอนพัฒนาคือ `http://localhost:3000` (ต้องตรงกับพอร์ตที่รัน) |
+| `COURSE_API_URL` | ❌ | ชี้ API คอร์สฟรีไปที่อื่น (เช่น mock server ตอน e2e) ถ้าไม่ตั้งจะใช้ API จริง |
 
 > ไฟล์ `.env` ไม่ถูกเก็บลง Git (อยู่ใน `.gitignore`) อย่า commit ขึ้น repository
 
@@ -135,29 +185,12 @@ npm run dev
 
 ## หน้าผู้ดูแลระบบ (Admin)
 
-เข้าที่ `/admin` — มีแดชบอร์ดสรุปยอดขายและหน้าจัดการสินค้าแบบ CRUD
-
-**ต้องตั้งตัวเองเป็นแอดมินก่อน** ระบบไม่มีปุ่มให้เลื่อนขั้นตัวเอง (กันไม่ให้ใครก็สมัครแล้วเป็นแอดมินได้) ต้องแก้ในฐานข้อมูลโดยตรง:
+ใช้บัญชี `admin@example.com` จาก seed หรือตั้งบัญชีของตัวเองเป็นแอดมินในฐานข้อมูล (ระบบไม่มีปุ่มเลื่อนขั้นตัวเอง):
 
 ```bash
 sqlite3 prisma/dev.db "UPDATE user SET role='admin' WHERE email='อีเมลของคุณ';"
 ```
 
-> เครื่องที่ไม่มี `sqlite3` ใช้ `npx prisma studio` แล้วแก้ช่อง `role` ในตาราง `user` เป็น `admin`
+> เครื่องที่ไม่มี `sqlite3` ใช้ `npx prisma studio` แล้วแก้ช่อง `role` ในตาราง `user` เป็น `admin` จากนั้นออกจากระบบแล้วเข้าใหม่
 
-จากนั้นออกจากระบบแล้วเข้าใหม่ เพื่อให้ session อ่านค่า role ใหม่
-
-**ใส่ข้อมูลให้กราฟมีอะไรดู** ข้อมูลตัวอย่างชุดหลักมีคำสั่งซื้อไม่กี่รายการและเป็นวันที่ตายตัว พอเวลาผ่านไปจะหลุดออกนอกช่วง 7/30/90 วัน ทำให้กราฟว่าง รันคำสั่งนี้เพื่อสร้างคำสั่งซื้อย้อนหลังโดยอิงวันที่ปัจจุบัน:
-
-```bash
-npm run db:seed:orders
-```
-
-**สิ่งที่ทำได้ในหน้า Admin**
-
-| หน้า | ทำอะไรได้ |
-|------|-----------|
-| `/admin` | ดูยอดขายรวม จำนวนคำสั่งซื้อ สินค้า ลูกค้า, กราฟยอดขายเลือกช่วง 7/30/90 วัน, คำสั่งซื้อล่าสุด (รีเฟรชเองทุก 30 วินาที) |
-| `/admin/products` | ค้นหา แบ่งหน้า เพิ่ม แก้ไข และลบสินค้า |
-
-> สินค้าที่มีคนสั่งซื้อไปแล้วจะลบไม่ได้ ระบบจะขึ้นข้อความอธิบายแทนที่จะพัง
+> คอร์สที่มียอดขายแล้วลบไม่ได้ ให้ยกเลิกการเผยแพร่แทน

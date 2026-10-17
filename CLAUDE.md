@@ -4,58 +4,60 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Teaching starter app (CodingThailand) for a software-testing / unit-testing course: a small e-commerce site built with Next.js 16 (App Router, React 19), Prisma 7 + SQLite (via `better-sqlite3` driver adapter), Better Auth, shadcn/ui (`radix-rhea` style) and Tailwind CSS v4. UI text, code comments and the README are in Thai — keep new user-facing strings and comments in Thai to match.
+Teaching app (CodingThailand) for a software-testing / unit-testing course: an **online course-selling platform** (catalog, cart + coupons, fake payment, per-course refunds, lesson progress, certificates, reviews, admin dashboard) built with Next.js 16 (App Router, React 19), Prisma 7 + SQLite (via `better-sqlite3` driver adapter), Better Auth, shadcn/ui (`radix-rhea` style) and Tailwind CSS v4. UI text, code comments and the README are in Thai — keep new user-facing strings and comments in Thai to match.
+
+The code itself is the teaching material: **every change must keep the code easy to unit test** (see Architecture). Requirements → user stories → test case design live in `docs/requirements/user-stories-and-test-cases.md`; keep its constants, error codes, function names and expected values in sync with the code.
 
 ## Commands
 
 ```bash
-npm run dev                 # dev server on :3000 (npm run dev -- -p 3100 for another port)
-npm run build               # production build — fails if BETTER_AUTH_SECRET is empty ("You are using the default secret")
+npm run dev                 # dev server on :3000 — another port needs BETTER_AUTH_URL to match, e.g.
+                            # BETTER_AUTH_URL=http://localhost:3100 npm run dev -- -p 3100  (else login fails: "Invalid origin")
+npm run build               # production build — fails if BETTER_AUTH_SECRET is empty
 npm run lint                # eslint (next core-web-vitals + typescript)
 npx tsc --noEmit            # type check (no script for this)
 
 npx prisma generate         # regenerate client into generated/prisma/ (gitignored — required after install or schema change)
 npx prisma db push          # sync schema to prisma/dev.db (no migrations are used)
-npx prisma studio           # GUI for the DB
-
-npm run db:test:setup       # recreate prisma/test.db from schema + seed SQL (--empty for schema only)
-npm run db:seed:orders      # insert deterministic orders for the last 90 days (ids >= 1000, idempotent); optional path arg e.g. prisma/test.db
+npm run db:seed             # prisma/seed.ts → wipes domain data + @example.com users, inserts demo data (orders relative to today)
+npm run db:test:setup       # recreate prisma/test.db from schema + seed (--empty for schema only)
 ```
 
-No test framework is installed yet (no test script, no Jest/Vitest/Playwright config). Adding one is part of the course work.
-
-Setup: `cp .env.example .env`, set `BETTER_AUTH_SECRET` (`npx @better-auth/cli secret`), `npm install`, `npx prisma generate`, `npx prisma db push`. Seed data is loaded from `docs/insert_data_ecom_example_50_products.sql` — note `docs/` is not currently present in this checkout, so the seed scripts that read it will fail until it is added.
-
-## Current state of the repo
-
-This is a stripped-down starter: several modules referenced by existing code are **missing** and `tsc` currently fails on them:
-- `@/lib/product/product-service` (`getProductList`) and `@/lib/product/product-image` (`fileSystemImageExists`) — used by `src/app/(front)/page.tsx`
-- `@/components/featured-products`, `@/app/(front)/components/CountCartItem` (used by `navbar.tsx`)
-- `@/lib/admin/{period,revenue,stats}` — imported by `src/types/admin.ts`
-
-The README also describes routes that don't exist here yet (`/product`, `/cart`, `/contact`, `/course`, `/admin`, `/admin/products`, `/api/admin/*`). `src/types/*.ts` define the intended shapes for these (product view models, admin API responses, cart items, courses) — use them as the contract when implementing the missing pieces.
+No test framework is installed **on purpose** (no test script, no Vitest/Jest/Playwright config) — adding one is part of the course work. Seed accounts: `admin@example.com`, `user@example.com`, `student01…20@example.com`, password `password123`.
 
 ## Architecture
 
-**Route groups with separate root layouts.** `src/app/(front)/layout.tsx` and `src/app/(auth)/layout.tsx` each render their own `<html>`/`<body>` (there is no shared `src/app/layout.tsx`). `(front)` includes the `Navbar` (wrapped in `Suspense`) and a `react-toastify` `ToastContainer`; `(auth)` (login/signup) has no navbar. Both import `../globals.css`.
+**Layers (functional core, imperative shell).** Inner layers never import outer ones.
 
-**Cache Components is enabled** (`cacheComponents: true` in `next.config.ts`). Pages/layouts that do dynamic work currently opt out with `export const instant = false` (marked TODO). Server components that hit the DB call `await connection()` and are wrapped in `<Suspense>` with a skeleton fallback.
+1. **Pure rules** — `src/lib/**/*-rules.ts`, `*-policy.ts`, `progress.ts`, `allocate-discount.ts`, `checkout-quote.ts`, `catalog-params.ts`, `course-sort.ts`, `*-mapper.ts`, `admin/{period,revenue,stats}.ts`, `auth/authorize.ts`, `shared/*.ts`. They must not import Prisma, `next/*` or `fetch`, and must not call `new Date()`/`Date.now()`/`Math.random()` or read `process.env` — pass everything in.
+2. **Repositories** — each `*-repository.ts` exports `interface XxxRepository` + `createPrismaXxxRepository(db: DbClient)` (`DbClient = PrismaClient | Prisma.TransactionClient`). They return domain types via pure mappers, never raw Prisma models. `src/lib/repositories.ts` bundles them (`createPrismaRepositories`) and defines `UnitOfWork.run(fn)` for transactions.
+3. **Services** — `createXxxService(deps)` in `*-service.ts`; depend only on repository interfaces and ports (`Clock`, `PaymentGateway`, `CodeGenerator`, `fetch`). Never import `@/lib/prisma` or `@/lib/container`.
+4. **Shell** — Server Actions (`src/app/**/actions.ts`), Route Handlers (`src/app/api/admin/*`) and pages: authorize (`authorizeUser`/`authorizeAdmin`) → parse with zod (`parseWithSchema`) → call `services.*` from `src/lib/container.ts` → map with `toActionState` / `errorResponse`. Only `src/lib/auth/session.ts` and the shell may use `headers()`/`redirect()`.
 
-**Dependency injection for testability.** Service functions take their dependencies as parameters rather than importing them — e.g. `getProductList(params, { prisma, imageExists, pageSize })`. Tests are meant to build their own `PrismaClient` pointed at `prisma/test.db` (via `npm run db:test:setup`, `DATABASE_URL="file:./prisma/test.db"`) and pass it in, so integration tests never touch `prisma/dev.db`. Follow this pattern for new services/repositories.
+`src/lib/container.ts` (`server-only`) is the single composition root; tests must not import it — they build services with fakes or with `createPrismaRepositories(testPrisma)` pointed at `prisma/test.db`.
 
-**Validation schemas live outside components.** Zod schemas (`src/lib/auth-schema.ts`) are separate from the forms so rules can be unit-tested without rendering. Forms use `react-hook-form` + `zodResolver` with shadcn `Field`/`Controller`. `MIN_PASSWORD_LENGTH` in `auth-schema.ts` must stay in sync with `minPasswordLength` in `src/lib/auth.ts`.
+**Errors.** Business errors are returned as `Result<T>` (`src/lib/shared/result.ts`), not thrown. Codes + Thai messages live only in `src/lib/shared/errors.ts`; HTTP mapping in `shared/http.ts`.
 
-**Auth (Better Auth).**
-- Server: `src/lib/auth.ts` (Prisma adapter, email+password, `autoSignIn: false`), mounted at `src/app/api/auth/[...all]/route.ts`. Server components read the session via `auth.api.getSession({ headers: await headers() })`.
-- Client: `src/lib/auth-client.ts` declares the extra `role` field with `inferAdditionalFields` by hand instead of importing the server auth type — this keeps Prisma out of the client bundle. Don't import `@/lib/auth` from client code.
-- `role` (`"user"` | `"admin"`) has `input: false`, so it can only be changed directly in the DB (`UPDATE user SET role='admin' ...`); users must log out/in for it to take effect.
+**Money & time.** All money is `Int` satang (`formatTHB`, `bahtToSatang` in `shared/money.ts`; forms take baht and convert in the zod transform). Business dates use `Asia/Bangkok` (`toDateKey`, `toBusinessYear` in `shared/clock.ts`).
 
-**Prisma.** Schema in `prisma/schema.prisma`, config in `prisma.config.ts` (loads `.env` via `dotenv`). Client is generated with the `prisma-client` generator to `generated/prisma/` and imported via the `@generated/*` path alias (`@generated/prisma/client`). `src/lib/prisma.ts` exports a global singleton using `PrismaBetterSqlite3`. Auth models are PascalCase mapped to lowercase tables (`user`, `session`, …); shop tables (`products`, `categories`, `orders`, `order_items`, `customers`, `product_images`) are snake_case with mostly nullable columns — normalize nulls into view models (see `ProductRow` → `ProductViewModel` in `src/types/product.ts`). `order_items → products` has no cascade, so deleting an ordered product must be handled gracefully.
+**Key rules** (constants are exported — don't hardcode): coupon `PERCENT` floors to satang and respects `maxDiscountSatang`, never exceeds subtotal, one per order; discount is allocated per item (`allocateDiscount`, remainder to last item) and stored as `OrderItem.paidSatang`; refunds per item within `REFUND_WINDOW_DAYS = 7` and progress ≤ `REFUND_MAX_PROGRESS_PERCENT = 20` (refund → item `REFUNDED`, enrollment `REVOKED`, review deleted); certificate at 100% (`CT-YYYY-XXXXXX`); checkout charges outside the transaction, `total = 0` skips the gateway. Fake cards: `4242424242424242` ok, `4000000000000002` declined, `4000000000000119` throws.
 
-**Images.** Product images are files in `public/product-image/`; `product_images.image_name` references them and a picture is only exposed if the file exists. Remote images are allowed only from `www.fffuel.co` and `api.codingthailand.com`.
+**Route groups with separate root layouts.** `(front)` (Navbar + Footer), `(auth)` (login/signup) and `(admin)` (sidebar; layout calls `requireAdmin()`, actions re-check) each render their own `<html>`/`<body>` with `ThemeProvider` (next-themes, dark mode) and import `../globals.css`.
 
-**External course API.** Courses come from `https://api.codingthailand.com/api/course`; `COURSE_API_URL` overrides it (intended for pointing at a mock server during e2e).
+**Cache Components is enabled** (`cacheComponents: true`). Pages set `export const instant = false` (TODO) and do dynamic work (DB, session, `params`/`searchParams`) inside an async component wrapped in `<Suspense>` that calls `await connection()` first.
 
-**E2E hooks.** Interactive elements carry `data-testid` attributes (`login-email`, `login-submit`, `nav-cart`, `nav-user-name`, `logout-button`, …). Preserve them and add them to new interactive UI.
+**Client state.** Cart = zustand `persist` in `src/stores/cart-store.ts`; reducers (`addItem`, `removeItem`, `setCouponCode`, `cartSubtotal`) are exported pure functions. Prices in the cart are display-only — the server recomputes via `checkout.quote()`. Use `useHydrated()` before rendering localStorage-backed values. Admin forms use `useActionState` + `useActionFormSubmit` (onSubmit) because React 19 resets `<form action>` even on validation errors.
 
-Path aliases: `@/*` → `src/*`, `@generated/*` → `generated/*`. shadcn components go in `src/components/ui` (add via `npx shadcn add <component>`).
+**Validation schemas live outside components** (`src/lib/validation/*`, `src/lib/auth-schema.ts`). `MIN_PASSWORD_LENGTH` must stay in sync with `minPasswordLength` in `src/lib/auth.ts`.
+
+**Auth (Better Auth).** Server `src/lib/auth.ts` (Prisma adapter, email+password, `autoSignIn: false`) mounted at `src/app/api/auth/[...all]/route.ts`. Client `src/lib/auth-client.ts` declares `role` via `inferAdditionalFields` — don't import `@/lib/auth` from client code. `role` (`"user"` | `"admin"`) has `input: false`; change it in the DB only. Login honours `?next=` via `safeRedirectPath`.
+
+**Prisma.** Schema `prisma/schema.prisma`, config `prisma.config.ts` (loads `.env`, seed = `tsx prisma/seed.ts`). Client generated to `generated/prisma/`, imported as `@generated/prisma/client`. Models are PascalCase/camelCase mapped to snake_case tables; status columns are `String` with allowed values in `src/lib/shared/status.ts`. `order_items → courses` is `Restrict` (sold courses can't be deleted — unpublish instead).
+
+**Images.** Course covers are SVGs in `public/course-image/` (generated by `scripts/generate-course-images.ts`). Remote images only from `www.fffuel.co` and `api.codingthailand.com` (free-course pictures).
+
+**External API.** `/free-courses` uses `https://api.codingthailand.com/api/course` (`{ data: [...] }`); `COURSE_API_URL` overrides it (read only in `container.ts`).
+
+**E2E hooks.** Interactive elements carry `data-testid` (`login-*`, `signup-*`, `nav-cart`, `nav-cart-count`, `nav-user-name`, `logout-button` (inside the user dropdown), `course-card-{slug}`, `add-to-cart`, `coupon-input`, `coupon-apply`, `card-number`, `checkout-submit`, `lesson-complete`, `progress-percent`, `refund-button-{itemId}`, `review-submit`, `admin-*`, …). Preserve them and add them to new interactive UI.
+
+Path aliases: `@/*` → `src/*`, `@generated/*` → `generated/*`. shadcn components go in `src/components/ui` (add via `npx shadcn add <component>`; avoid overwriting existing files).

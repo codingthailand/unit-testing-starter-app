@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import { toast } from "react-toastify";
+import { useActionFormSubmit } from "@/hooks/use-action-form";
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ type CourseFormProps<T> = {
 
 export default function CourseForm<T>({ categories, course, action, submitLabel }: CourseFormProps<T>) {
   const [state, formAction, pending] = useActionState<ActionState<T> | null, FormData>(action, null);
+  const onSubmit = useActionFormSubmit(formAction);
   const errors = state && !state.ok ? state.fieldErrors : undefined;
 
   useEffect(() => {
@@ -30,7 +32,7 @@ export default function CourseForm<T>({ categories, course, action, submitLabel 
   }, [state]);
 
   return (
-    <form action={formAction} className="space-y-6 rounded-xl border bg-card p-6" data-testid="course-form">
+    <form onSubmit={onSubmit} className="space-y-6 rounded-xl border bg-card p-6" data-testid="course-form">
       <FieldGroup className="grid gap-6 md:grid-cols-2">
         <FormField errors={errors} label="ชื่อคอร์ส" name="title">
           <Input data-testid="course-title-input" defaultValue={course?.title} id="title" name="title" />
