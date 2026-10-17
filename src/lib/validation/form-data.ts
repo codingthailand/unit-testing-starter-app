@@ -1,4 +1,4 @@
-import type { z } from "zod"
+import { z } from "zod"
 import { appError } from "@/lib/shared/errors"
 import { err, ok, type Result } from "@/lib/shared/result"
 
@@ -20,4 +20,15 @@ export function formDataToObject(formData: FormData, booleanKeys: readonly strin
   const data: Record<string, unknown> = Object.fromEntries(formData.entries())
   for (const key of booleanKeys) data[key] = formData.get(key) === "on" || formData.get(key) === "true"
   return data
+}
+
+/**
+ * ตัวเลขจากฟอร์มที่ "ต้องกรอก" — z.coerce.number() เฉย ๆ จะแปลง "" เป็น 0 แล้วผ่าน .min(0) ไปเงียบ ๆ
+ * helper นี้แปลงค่าว่าง/ช่องว่างล้วนเป็น undefined ก่อน จึงได้ error ว่าต้องกรอก
+ */
+export function requiredNumber(message: string) {
+  return z.preprocess(
+    (value) => (value === null || (typeof value === "string" && value.trim() === "") ? undefined : value),
+    z.coerce.number({ error: message }).refine((value) => Number.isFinite(value), message)
+  )
 }

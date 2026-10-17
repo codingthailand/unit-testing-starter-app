@@ -25,6 +25,8 @@ export interface CourseRepository {
   findById(id: number): Promise<CourseDetail | null>
   findForSale(ids: readonly number[]): Promise<CourseForSale[]>
   countLessons(courseId: number): Promise<number>
+  /** จำนวนบทเรียนแยกตามคอร์ส (query เดียว) */
+  countLessonsByCourse(courseIds: readonly number[]): Promise<Map<number, number>>
   findLesson(lessonId: number): Promise<LessonWithCourse | null>
   listCategories(): Promise<Category[]>
   isSlugTaken(slug: string, exceptId?: number): Promise<boolean>
@@ -97,6 +99,15 @@ export function createPrismaCourseRepository(db: DbClient): CourseRepository {
 
     async countLessons(courseId) {
       return db.lesson.count({ where: { courseId } })
+    },
+
+    async countLessonsByCourse(courseIds) {
+      const rows = await db.lesson.groupBy({
+        by: ["courseId"],
+        where: { courseId: { in: [...courseIds] } },
+        _count: { _all: true },
+      })
+      return new Map(rows.map((row) => [row.courseId, row._count._all]))
     },
 
     async findLesson(lessonId) {

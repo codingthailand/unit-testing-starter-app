@@ -12,7 +12,15 @@ export type ChargeResult =
   | { status: "approved"; reference: string }
   | { status: "declined"; reason: string }
 
+export type RefundRequest = {
+  /** reference ที่ได้จาก charge */
+  reference: string
+  amountSatang: number
+}
+
 export interface PaymentGateway {
   /** throw เมื่อเชื่อมต่อไม่ได้ (network error) — คืน declined เมื่อบัตรถูกปฏิเสธ */
   charge(request: ChargeRequest): Promise<ChargeResult>
+  /** คืนเงิน (ทั้งหมดหรือบางส่วน) — throw เมื่อทำไม่สำเร็จ */
+  refund(request: RefundRequest): Promise<void>
 }

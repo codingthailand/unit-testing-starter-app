@@ -21,7 +21,8 @@ const dateFormatter = new Intl.DateTimeFormat("th-TH", { dateStyle: "long", time
 async function CertificateView({ params }: { params: Params }) {
   await connection();
   const { code } = await params;
-  const certificate = await services.learning.getCertificate(decodeURIComponent(code));
+  // params ถูก decode มาแล้วโดย Next.js — ห้าม decodeURIComponent ซ้ำ (รหัสที่มี % จะ throw)
+  const certificate = await services.learning.getCertificate(code);
   if (!certificate) notFound();
 
   return (

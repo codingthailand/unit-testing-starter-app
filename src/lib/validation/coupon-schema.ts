@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { bahtToSatang } from "@/lib/shared/money"
 import { COUPON_TYPES } from "@/lib/shared/status"
+import { requiredNumber } from "./form-data"
 
 /**
  * ฟอร์มสร้างคูปอง (admin) — กรอกเป็นบาท แล้วแปลงเป็นสตางค์ตอน transform
@@ -14,7 +15,7 @@ export const couponSchema = z
       .toUpperCase()
       .regex(/^[A-Z0-9]{3,20}$/, "โค้ดต้องเป็น A-Z หรือ 0-9 ยาว 3–20 ตัว"),
     type: z.enum(COUPON_TYPES, { error: "กรุณาเลือกประเภทคูปอง" }),
-    value: z.coerce.number({ error: "กรุณากรอกตัวเลข" }),
+    value: requiredNumber("กรุณากรอกส่วนลด"),
     maxDiscountBaht: z
       .union([z.literal(""), z.coerce.number().positive("เพดานส่วนลดต้องมากกว่า 0")])
       .optional(),

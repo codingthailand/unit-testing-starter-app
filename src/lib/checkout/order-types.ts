@@ -31,6 +31,7 @@ export type OrderItemForRefund = OrderItem & {
   orderId: number
   userId: string
   paidAt: Date | null
+  paymentRef: string | null
 }
 
 export type NewOrderInput = {

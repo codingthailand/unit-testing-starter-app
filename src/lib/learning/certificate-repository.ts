@@ -1,10 +1,14 @@
-import type { DbClient } from "@/lib/shared/db"
+import { isUniqueConstraintError, type DbClient } from "@/lib/shared/db"
 import type { Certificate, CertificateView } from "./learning-types"
 
 export interface CertificateRepository {
   find(userId: string, courseId: number): Promise<Certificate | null>
   findByCode(code: string): Promise<CertificateView | null>
-  create(input: Omit<Certificate, "id">): Promise<Certificate>
+  /**
+   * ออกใบประกาศ — ถ้าผู้ใช้มีใบของคอร์สนี้อยู่แล้ว (เช่น request ซ้อนกัน) คืนใบเดิม
+   * คืน null เมื่อ `code` ชนกับใบของคนอื่น ให้ผู้เรียกสุ่มรหัสใหม่
+   */
+  issue(input: Omit<Certificate, "id">): Promise<Certificate | null>
 }
 
 export function createPrismaCertificateRepository(db: DbClient): CertificateRepository {
@@ -34,8 +38,15 @@ export function createPrismaCertificateRepository(db: DbClient): CertificateRepo
       }
     },
 
-    async create(input) {
-      return db.certificate.create({ data: input })
+    async issue(input) {
+      try {
+        return await db.certificate.create({ data: input })
+      } catch (error) {
+        if (!isUniqueConstraintError(error)) throw error
+        return db.certificate.findUnique({
+          where: { userId_courseId: { userId: input.userId, courseId: input.courseId } },
+        })
+      }
     },
   }
 }

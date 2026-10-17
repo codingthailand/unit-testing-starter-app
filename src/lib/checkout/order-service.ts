@@ -22,34 +22,40 @@ export type OrderItemView = OrderItem & {
 export type OrderView = Omit<Order, "items"> & { items: OrderItemView[] }
 
 export function createOrderService({ orders, courses, progress, clock }: OrderServiceDeps) {
-  async function withRefundInfo(order: Order, userId: string): Promise<OrderView> {
+  /** เติมข้อมูลคืนเงินให้ทุก order — ดึงจำนวนบทเรียน/ความคืบหน้าครั้งเดียวสำหรับทุกคอร์ส (ไม่ N+1) */
+  async function withRefundInfo(list: Order[], userId: string): Promise<OrderView[]> {
+    const courseIds = [...new Set(list.flatMap((order) => order.items.map((item) => item.courseId)))]
+    if (courseIds.length === 0) return list.map((order) => ({ ...order, items: [] }))
+
+    const [totals, completed] = await Promise.all([
+      courses.countLessonsByCourse(courseIds),
+      progress.completedCountByCourse(userId, courseIds),
+    ])
     const now = clock()
-    const items = await Promise.all(
-      order.items.map(async (item) => {
-        const [total, completed] = await Promise.all([
-          courses.countLessons(item.courseId),
-          progress.completedLessonIds(userId, item.courseId),
-        ])
-        const progressPercent = calculateProgressPercent(completed.length, total)
+    return list.map((order) => ({
+      ...order,
+      items: order.items.map((item) => {
+        const progressPercent = calculateProgressPercent(
+          completed.get(item.courseId) ?? 0,
+          totals.get(item.courseId) ?? 0
+        )
         return {
           ...item,
           progressPercent,
           refund: canRefund({ itemStatus: item.status, paidAt: order.paidAt, progressPercent }, now),
         }
-      })
-    )
-    return { ...order, items }
+      }),
+    }))
   }
 
   return {
     async listOrders(userId: string): Promise<OrderView[]> {
-      const list = await orders.listForUser(userId)
-      return Promise.all(list.map((order) => withRefundInfo(order, userId)))
+      return withRefundInfo(await orders.listForUser(userId), userId)
     },
 
     async getOrder(orderId: number, userId: string): Promise<OrderView | null> {
       const order = await orders.findForUser(orderId, userId)
-      return order ? withRefundInfo(order, userId) : null
+      return order ? (await withRefundInfo([order], userId))[0] : null
     },
   }
 }

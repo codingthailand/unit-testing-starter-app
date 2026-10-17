@@ -17,6 +17,7 @@ export const ERROR_MESSAGES = {
   CART_EMPTY: "ตะกร้าว่าง",
   COURSE_NOT_AVAILABLE: "มีคอร์สที่ไม่เปิดขาย",
   ALREADY_ENROLLED: "คุณลงทะเบียนคอร์สนี้แล้ว",
+  CHECKOUT_IN_PROGRESS: "มีคำสั่งซื้อคอร์สนี้กำลังดำเนินการอยู่ กรุณารอสักครู่",
   PAYMENT_DECLINED: "บัตรถูกปฏิเสธ กรุณาใช้บัตรอื่น",
   PAYMENT_ERROR: "ชำระเงินไม่สำเร็จ กรุณาลองใหม่",
 
@@ -30,6 +31,7 @@ export const ERROR_MESSAGES = {
   REFUND_NOT_PAID: "รายการนี้ยังไม่ได้ชำระเงิน",
   REFUND_WINDOW_EXPIRED: "เกินระยะเวลาขอคืนเงิน 7 วัน",
   REFUND_PROGRESS_EXCEEDED: "เรียนเกิน 20% แล้ว ไม่สามารถคืนเงินได้",
+  REFUND_FAILED: "คืนเงินไม่สำเร็จ กรุณาลองใหม่",
 
   // review
   REVIEW_NOT_ENROLLED: "ต้องลงทะเบียนคอร์สก่อนจึงรีวิวได้",

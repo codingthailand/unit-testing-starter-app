@@ -12,6 +12,9 @@ import type { CertificateView } from "./learning-types"
 import { calculateProgressPercent, shouldIssueCertificate } from "./progress"
 import type { ProgressRepository } from "./progress-repository"
 
+/** จำนวนครั้งที่ลองสุ่มรหัสใบประกาศใหม่เมื่อรหัสชนกัน */
+export const MAX_CERTIFICATE_CODE_ATTEMPTS = 3
+
 export type LearningServiceDeps = {
   courses: CourseRepository
   enrollments: EnrollmentRepository
@@ -100,13 +103,17 @@ export function createLearningService(deps: LearningServiceDeps) {
       const existing = await certificates.find(input.userId, lesson.courseId)
       if (existing) return ok({ progressPercent, certificateCode: existing.code })
 
-      const certificate = await certificates.create({
-        code: formatCertificateCode(toBusinessYear(now), generateCode()),
-        userId: input.userId,
-        courseId: lesson.courseId,
-        issuedAt: now,
-      })
-      return ok({ progressPercent, certificateCode: certificate.code })
+      const year = toBusinessYear(now)
+      for (let attempt = 0; attempt < MAX_CERTIFICATE_CODE_ATTEMPTS; attempt++) {
+        const certificate = await certificates.issue({
+          code: formatCertificateCode(year, generateCode()),
+          userId: input.userId,
+          courseId: lesson.courseId,
+          issuedAt: now,
+        })
+        if (certificate) return ok({ progressPercent, certificateCode: certificate.code })
+      }
+      throw new Error("สุ่มรหัสใบประกาศไม่สำเร็จ (รหัสชนกันซ้ำหลายครั้ง)")
     },
 
     async getMyCourses(userId: string): Promise<MyCourse[]> {

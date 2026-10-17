@@ -13,7 +13,11 @@ export interface EnrollmentRepository {
     orderItemId: number | null
     enrolledAt: Date
   }): Promise<void>
-  revoke(userId: string, courseId: number): Promise<void>
+  /**
+   * ถอนสิทธิ์เฉพาะเมื่อ enrollment ผูกกับ orderItem นี้ (ถ้าผูกกับ order อื่นแล้ว จะไม่แตะ)
+   * คืน true เมื่อถอนสิทธิ์จริง
+   */
+  revokeForOrderItem(userId: string, courseId: number, orderItemId: number): Promise<boolean>
 }
 
 type EnrollmentRow = Omit<Enrollment, "status"> & { status: string }
@@ -63,11 +67,12 @@ export function createPrismaEnrollmentRepository(db: DbClient): EnrollmentReposi
       })
     },
 
-    async revoke(userId, courseId) {
-      await db.enrollment.update({
-        where: { userId_courseId: { userId, courseId } },
+    async revokeForOrderItem(userId, courseId, orderItemId) {
+      const { count } = await db.enrollment.updateMany({
+        where: { userId, courseId, orderItemId, status: "ACTIVE" },
         data: { status: "REVOKED" },
       })
+      return count === 1
     },
   }
 }

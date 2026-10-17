@@ -82,6 +82,8 @@ Action/Route ─▶ Service ─▶ Repository interface ◀─ Prisma repo (Inte
 | TC-01-14 | `null` / `""` | `"/"` |
 | TC-01-15 | `"https://evil.com"` | `"/"` (กัน open redirect) |
 | TC-01-16 | `"//evil.com"` / `"/\\evil.com"` | `"/"` |
+| TC-01-17 | `"/\t/evil.com"` (มาจาก `?next=/%09/evil.com` ที่ถูก decode แล้ว — browser ตัด tab ทิ้งเหลือ `//evil.com`) | `"/"` |
+| TC-01-18 | `"/ok/../admin"` | `"/admin"` (normalize ด้วย URL parser) |
 
 ---
 
@@ -200,6 +202,7 @@ state: `{ items: CartItem[], couponCode: string | null }`
 | TC-04-19 | `couponService.createCoupon` ด้วย code ซ้ำ | `COUPON_CODE_TAKEN` — `โค้ดนี้ถูกใช้แล้ว` |
 | TC-04-20 | FIXED value `199.99` บาท | ผ่าน และ `value = 19999` (สตางค์) |
 | TC-04-21 | code `"ab"` / `"abc"` / `"A".repeat(21)` | ไม่ผ่าน / ผ่าน (กลายเป็น `"ABC"`) / ไม่ผ่าน |
+| TC-04-22 | value `""` (ช่องว่าง) | ไม่ผ่าน `กรุณากรอกส่วนลด` (ไม่ถูกแปลงเป็น 0) |
 
 ---
 
@@ -234,6 +237,8 @@ state: `{ items: CartItem[], couponCode: string | null }`
 - AC4 ถ้าจ่ายสำเร็จ → Order `PAID`, OrderItem `PAID`, Enrollment `ACTIVE`
 - AC5 ถ้าบัตรถูกปฏิเสธ → Order `FAILED` (item ค้างเป็น `PENDING`) ไม่มี Enrollment และคืน `PAYMENT_DECLINED`
 - AC6 ถ้ายอดสุทธิเป็น 0 → ไม่เรียก gateway แต่ order เป็น `PAID`
+- AC7 ระหว่างมี order `PENDING` ของคอร์สเดียวกัน (อายุไม่เกิน `PENDING_ORDER_TTL_MINUTES = 15` นาที) สร้าง order ใหม่ไม่ได้ → `CHECKOUT_IN_PROGRESS` (กันกดซ้ำ/เปิดสอง tab แล้วโดนตัดเงินสองครั้ง)
+- AC8 ถ้าตัดเงินสำเร็จแต่บันทึก PAID/Enrollment ไม่สำเร็จ → **ชดเชย**: `paymentGateway.refund` คืนเงิน, order `FAILED`, คืน `PAYMENT_ERROR` (บันทึก `paymentRef` ไว้ตั้งแต่หลัง charge เสมอ)
 
 บัตรทดสอบ (`createFakePaymentGateway` ใน `src/lib/payment/fake-payment-gateway.ts`): `4242424242424242` ผ่าน, `4000000000000002` ถูกปฏิเสธ, `4000000000000119` throw (จำลองระบบล่ม) — เลขอื่นถูกปฏิเสธ
 
@@ -261,6 +266,10 @@ state: `{ items: CartItem[], couponCode: string | null }`
 | TC-06-11 | EG | client ส่ง `priceSatang: 1` มา | ระบบใช้ราคาจาก DB |
 | TC-06-12 | EG | gateway throw (เครือข่ายล่ม) | Order `FAILED` แล้ว `PAYMENT_ERROR` — `ชำระเงินไม่สำเร็จ กรุณาลองใหม่` |
 | TC-06-16 | EG | `requestedCourseIds: [7, 7]` | quote มี 1 item (ตัดซ้ำ) |
+| TC-06-17 | Concurrency (Integration) | เรียก `checkout` คอร์สเดียวกัน 2 ครั้งพร้อมกัน (`Promise.all`) | ได้ `ok` 1 ครั้ง + `CHECKOUT_IN_PROGRESS` 1 ครั้ง และ `charge` ถูกเรียก **1** ครั้ง |
+| TC-06-18 | BVA (เวลา) | มี order PENDING อายุ 14:59 นาที / 15:00 นาที / 15:01 นาที (`fixedClock`) | `CHECKOUT_IN_PROGRESS` / `CHECKOUT_IN_PROGRESS` / ซื้อได้ |
+| TC-06-19 | Test double (compensation) | `UnitOfWork` ปลอมที่ throw ในครั้งที่ 2 (ตอน mark PAID) | `PAYMENT_ERROR`, `refund` ถูกเรียกด้วย reference + ยอดเดียวกับ charge, order `FAILED`, ไม่มี enrollment |
+| TC-06-20 | Test double | เหมือน TC-06-19 แต่ `refund` throw ด้วย | `PAYMENT_ERROR` และ order ค้าง `PENDING` พร้อม `paymentRef` (ให้ตรวจด้วยมือ) |
 | TC-06-13 | ST | ซื้อซ้ำคอร์สที่เคยคืนเงิน (enrollment `REVOKED`) | ซื้อได้ และ enrollment แถวเดิมกลับเป็น `ACTIVE` |
 | TC-06-14 | E2E | ไม่ login แล้วเปิด `/checkout` | redirect ไป `/login?next=/checkout` แล้ว login เสร็จกลับมาหน้าเดิม |
 | TC-06-15 | E2E | flow ซื้อครบด้วยบัตรผ่าน | เห็นคอร์สใน `/my-courses` และตะกร้าว่าง |
@@ -292,6 +301,7 @@ state: `{ items: CartItem[], couponCode: string | null }`
 | TC-07-11 | DT | บทปกติ + enrollment `REVOKED` | เข้าไม่ได้ |
 | TC-07-13 | Unit (service) | `completeLesson` โดยไม่มี enrollment | `NOT_ENROLLED` และ `progress.markCompleted` ไม่ถูกเรียก |
 | TC-07-14 | Unit (service) | `getLessonPage` บทปกติ ไม่ login | `UNAUTHENTICATED` (หน้าเว็บ redirect ไป login) |
+| TC-07-15 | Concurrency (Integration) | `progress.markCompleted` บทเดียวกัน 2 ครั้งพร้อมกัน | ไม่ throw (unique error ถูกกลืน) และมี 1 แถว |
 | TC-07-12 | E2E | กด `lesson-complete` | `progress-percent` เปลี่ยนเป็นค่าใหม่ |
 
 ---
@@ -313,6 +323,10 @@ state: `{ items: CartItem[], couponCode: string | null }`
 | TC-08-04 | EP | clock = `2026-10-17` และ stub code `ABC123` | `code = "CT-2026-ABC123"` |
 | TC-08-05 | E2E | เปิด `/certificates/CT-0000-XXXXXX` | หน้า 404 |
 | TC-08-06 | EG (timezone) | clock = `2026-12-31T18:00:00Z` (= 1 ม.ค. 2027 เวลาไทย) | `code` ขึ้นต้น `CT-2027-` |
+| TC-08-07 | Concurrency (Integration) | กดจบบทสุดท้าย 2 ครั้งพร้อมกัน | ทั้งสองได้ `ok` 100% และรหัสเดียวกัน มีใบประกาศ **1** ใบ |
+| TC-08-08 | Test double | `generateCode` คืนรหัสที่มีคนใช้แล้วในครั้งแรก แล้วคืน `"NEW001"` | ได้ `CT-YYYY-NEW001` (สุ่มใหม่) |
+| TC-08-09 | EG | `generateCode` ชนทุกครั้งเกิน `MAX_CERTIFICATE_CODE_ATTEMPTS = 3` | throw (error ของระบบ ไม่ใช่ business error) |
+| TC-08-10 | E2E | เปิด `/certificates/ABC%25ZZ` (มี `%`) | หน้า 404 (ไม่ใช่ 500) |
 
 ---
 
@@ -359,7 +373,11 @@ Enrollment: ACTIVE ──refund──▶ REVOKED ──ซื้อใหม่�
 | TC-09-15 | Security | user B ขอ refund item ของ user A | `ORDER_ITEM_NOT_FOUND` — `ไม่พบรายการนี้` |
 | TC-09-16 | EG (อภิปราย) | progress จริง 20.9% → `floor` ได้ 20 | อนุญาต — ใช้ถกในห้องว่าเป็นพฤติกรรมที่ต้องการหรือไม่ |
 | TC-09-17 | E2E | progress เกิน 20% | `refund-button-{itemId}` เป็น disabled และ `refund-reason-{itemId}` แสดงเหตุผล |
-| TC-09-18 | Unit (service) | คืนเงินสำเร็จ | `uow.run` ถูกเรียก 1 ครั้ง และใน callback เรียก `markItemRefunded` → `revoke` → `reviews.delete` |
+| TC-09-18 | Unit (service) | คืนเงินสำเร็จ | `uow.run` ถูกเรียก 1 ครั้ง และใน callback เรียก `markItemRefunded` → `revokeForOrderItem` → `reviews.delete` → `paymentGateway.refund({ reference, amountSatang: paidSatang })` |
+| TC-09-19 | Concurrency (Integration) | ขอคืนเงิน item เดียวกัน 2 ครั้งพร้อมกัน | `ok` 1 ครั้ง + `REFUND_ALREADY_REFUNDED` 1 ครั้ง และ gateway คืนเงิน **1** ครั้ง (guard อยู่ในคำสั่งเขียน `updateMany where status = PAID`) |
+| TC-09-20 | Test double | `paymentGateway.refund` throw | `REFUND_FAILED` และทุกอย่าง rollback: item ยัง `PAID`, enrollment ยัง `ACTIVE` |
+| TC-09-21 | EG | enrollment ผูกกับ orderItem อื่น (ซื้อใหม่หลังคืนเงิน) แล้วคืนเงิน item เก่า | ไม่ถอนสิทธิ์ enrollment ปัจจุบัน และไม่ลบรีวิว |
+| TC-09-22 | Unit | `countBy([7, 7, 9])` (ใช้นับความคืบหน้าหลายคอร์สใน query เดียว) | `Map { 7 → 2, 9 → 1 }` |
 
 ---
 
@@ -436,6 +454,7 @@ Enrollment: ACTIVE ──refund──▶ REVOKED ──ซื้อใหม่�
 | TC-12-08 | EP | 2 item ในวันเดียวกัน | รวมเป็นจุดเดียว |
 | TC-12-09 | EG | `buildDashboardStats` ที่ `paidOrders = 0` | `averageOrderSatang: 0` (ไม่หารด้วยศูนย์) |
 | TC-12-10 | EP | `paidItems: 94, refundedItems: 6` | `refundRatePercent: 6` |
+| TC-12-11 | EG (security) | `parsePeriod("toString")` / `"__proto__"` / `"constructor"` | `"30d"` (key ที่สืบทอดจาก prototype ต้องไม่ผ่าน — ใช้ `Object.hasOwn` ไม่ใช่ `in`) |
 
 ---
 
@@ -476,6 +495,32 @@ Enrollment: ACTIVE ──refund──▶ REVOKED ──ซื้อใหม่�
 
 ---
 
+## US-15 จัดการคอร์สและบทเรียน (R10)
+> **ในฐานะ** ผู้ดูแลระบบ **ฉันต้องการ** สร้าง/แก้ไขคอร์สและบทเรียน **เพื่อ** เปิดขายคอร์สใหม่
+
+**Acceptance Criteria**
+- AC1 ราคากรอกเป็นบาท (0 = คอร์สฟรี) แต่ **ช่องว่างไม่ใช่ 0** — ต้องแจ้ง `กรุณากรอกราคา`
+- AC2 slug ไม่ซ้ำ (`COURSE_SLUG_TAKEN`) และลำดับบทเรียนในคอร์สเดียวกันไม่ซ้ำ (`LESSON_POSITION_TAKEN`)
+- AC3 คอร์สที่มียอดขายแล้วลบไม่ได้ (`COURSE_HAS_SALES`)
+- AC4 กรอกผิดแล้วข้อมูลในฟอร์มต้องไม่หาย
+
+**เป้าหมาย:** `courseSchema`, `lessonSchema`, `requiredNumber` (`src/lib/validation/*`) — Unit; `courseAdminService` — Unit (fake repo) / Integration; ฟอร์ม admin — E2E
+
+| TC | เทคนิค | Input | Expected |
+|---|---|---|---|
+| TC-15-01 | EP/EG | `priceBaht: ""` / `"   "` | ไม่ผ่าน `กรุณากรอกราคา` (เคยถูกแปลงเป็น 0 แล้วกลายเป็นคอร์สฟรี) |
+| TC-15-02 | BVA | `priceBaht: "-1"` / `"0"` / `"100000"` / `"100001"` | ไม่ผ่าน / `priceSatang: 0` / `10000000` / ไม่ผ่าน |
+| TC-15-03 | EP | `priceBaht: "12.5"` | `priceSatang: 1250` |
+| TC-15-04 | EP | `categoryId: ""` | ไม่ผ่าน `กรุณาเลือกหมวดหมู่` |
+| TC-15-05 | BVA | `youtubeId` ยาว 10 / 11 / 12 | ไม่ผ่าน / ผ่าน / ไม่ผ่าน |
+| TC-15-06 | EP | `position: ""` | ไม่ผ่าน `กรุณากรอกลำดับ` |
+| TC-15-07 | DT | `deleteCourse` คอร์สไม่มีอยู่ / มียอดขาย / ไม่มียอดขาย | `COURSE_NOT_FOUND` / `COURSE_HAS_SALES` / `ok` |
+| TC-15-08 | EP | `createCourse` ด้วย slug ที่มีแล้ว | `COURSE_SLUG_TAKEN` |
+| TC-15-09 | EG | `updateCourse` คงค่า slug เดิมของตัวเอง | `ok` (ไม่นับว่าซ้ำกับตัวเอง) |
+| TC-15-10 | E2E | กรอกโค้ดคูปองแล้วใส่ส่วนลด 0 กดสร้าง | เห็น error และค่าที่กรอกยังอยู่ในฟอร์ม |
+
+---
+
 ## ภาคผนวก: Traceability Matrix
 
 | Requirement | User Story | ฟังก์ชันหลัก | Unit | Integration | E2E |
@@ -489,7 +534,7 @@ Enrollment: ACTIVE ──refund──▶ REVOKED ──ซื้อใหม่�
 | R7 | US-09 | `canRefund`, `refundOrderItem` | ✔ | ✔ | ✔ |
 | R8 | US-10 | `reviewSchema`, `averageRating`, `canReview`, `submitReview` | ✔ | ✔ | ✔ |
 | R9 | US-11 | `fetchFreeCourses` | ✔ | | ✔ |
-| R10 | US-12, US-13 | `groupRevenueByDay`, `buildDashboardStats`, `authorizeAdmin`, `httpStatusForError` | ✔ | ✔ | ✔ |
+| R10 | US-12, US-13, US-15 | `groupRevenueByDay`, `buildDashboardStats`, `authorizeAdmin`, `httpStatusForError`, `courseSchema`, `courseAdminService` | ✔ | ✔ | ✔ |
 
 ## ภาคผนวก: ลำดับการสอนที่แนะนำ
 1. **Unit ล้วน (ไม่มี dependency):** US-14 `formatTHB` → US-07 `calculateProgressPercent` → US-04 `calculateDiscount` (EP/BVA)
@@ -499,6 +544,8 @@ Enrollment: ACTIVE ──refund──▶ REVOKED ──ซื้อใหม่�
 5. **Test double:** US-11 (stub `fetch`), US-06 (spy/stub `PaymentGateway` + เขียน in-memory repository เองเพื่อเทสต์ service โดยไม่มี DB)
 6. **Mapper / Repository:** `toCourseSummary` (Unit) แล้วต่อด้วย Prisma repository บน test.db
 7. **Integration กับ DB:** US-06, US-09 State Transition (`prisma/test.db`)
+   - **Concurrency:** TC-06-17, TC-08-07, TC-09-19 — ยิง `Promise.all` แล้วตรวจว่ามีผลสำเร็จครั้งเดียว (ใช้อธิบาย check-then-act race และการย้าย guard เข้าไปในคำสั่งเขียน)
+   - **Compensation:** TC-06-19/20, TC-09-20 — ใช้ `UnitOfWork`/`PaymentGateway` ปลอมจำลองระบบล่มกลางทาง
 8. **E2E:** flow ซื้อ → เรียน → คืนเงิน ผ่าน `data-testid`
 
 ## ภาคผนวก: แผนที่โค้ด — จะเทสต์อะไร ไปดูที่ไหน

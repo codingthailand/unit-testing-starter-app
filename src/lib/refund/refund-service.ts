@@ -2,6 +2,7 @@ import type { OrderRepository } from "@/lib/checkout/order-repository"
 import type { CourseRepository } from "@/lib/course/course-repository"
 import type { ProgressRepository } from "@/lib/learning/progress-repository"
 import { calculateProgressPercent } from "@/lib/learning/progress"
+import type { PaymentGateway } from "@/lib/payment/payment-gateway"
 import type { UnitOfWork } from "@/lib/repositories"
 import type { Clock } from "@/lib/shared/clock"
 import { appError } from "@/lib/shared/errors"
@@ -13,6 +14,7 @@ export type RefundServiceDeps = {
   orders: OrderRepository
   courses: CourseRepository
   progress: ProgressRepository
+  paymentGateway: PaymentGateway
   clock: Clock
 }
 
@@ -21,11 +23,13 @@ export type RefundSuccess = {
   refundedSatang: number
 }
 
-export function createRefundService({ uow, orders, courses, progress, clock }: RefundServiceDeps) {
+export function createRefundService({ uow, orders, courses, progress, paymentGateway, clock }: RefundServiceDeps) {
   return {
     /**
-     * คืนเงินรายคอร์ส: item → REFUNDED, enrollment → REVOKED, ลบรีวิวของคอร์สนั้น
-     * item ของผู้ใช้อื่นตอบว่า "ไม่พบ" (ไม่บอกว่ามีอยู่)
+     * คืนเงินรายคอร์ส: item → REFUNDED, enrollment → REVOKED, ลบรีวิวของคอร์สนั้น, คืนเงินผ่าน gateway
+     * - item ของผู้ใช้อื่นตอบว่า "ไม่พบ" (ไม่บอกว่ามีอยู่)
+     * - กันคำขอซ้อน: เปลี่ยนสถานะแบบมีเงื่อนไข PAID → REFUNDED ใน transaction ใครมาทีหลังได้ REFUND_ALREADY_REFUNDED
+     * - เรียก gateway ใน transaction: ถ้าคืนเงินไม่สำเร็จ ทุกอย่าง rollback
      */
     async refundOrderItem(input: { userId: string; orderItemId: number }): Promise<Result<RefundSuccess>> {
       const item = await orders.findItemForUser(input.orderItemId, input.userId)
@@ -46,13 +50,21 @@ export function createRefundService({ uow, orders, courses, progress, clock }: R
       )
       if (!allowed.ok) return allowed
 
-      await uow.run(async (repos) => {
-        await repos.orders.markItemRefunded(item.id, now)
-        await repos.enrollments.revoke(input.userId, item.courseId)
-        await repos.reviews.delete(input.userId, item.courseId)
-      })
-
-      return ok({ orderItemId: item.id, refundedSatang: item.paidSatang })
+      try {
+        return await uow.run(async (repos): Promise<Result<RefundSuccess>> => {
+          if (!(await repos.orders.markItemRefunded(item.id, now))) {
+            return err(appError("REFUND_ALREADY_REFUNDED"))
+          }
+          const revoked = await repos.enrollments.revokeForOrderItem(input.userId, item.courseId, item.id)
+          if (revoked) await repos.reviews.delete(input.userId, item.courseId)
+          if (item.paidSatang > 0 && item.paymentRef) {
+            await paymentGateway.refund({ reference: item.paymentRef, amountSatang: item.paidSatang })
+          }
+          return ok({ orderItemId: item.id, refundedSatang: item.paidSatang })
+        })
+      } catch {
+        return err(appError("REFUND_FAILED"))
+      }
     },
   }
 }

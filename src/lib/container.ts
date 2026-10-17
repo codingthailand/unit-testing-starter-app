@@ -25,6 +25,7 @@ const uow = createPrismaUnitOfWork(prisma)
 const clock = systemClock
 
 const couponService = createCouponService(repos)
+const paymentGateway = createFakePaymentGateway({ clock })
 
 export const services = {
   course: createCourseService(repos),
@@ -34,11 +35,11 @@ export const services = {
     ...repos,
     uow,
     couponService,
-    paymentGateway: createFakePaymentGateway({ clock }),
+    paymentGateway,
     clock,
   }),
   order: createOrderService({ ...repos, clock }),
-  refund: createRefundService({ ...repos, uow, clock }),
+  refund: createRefundService({ ...repos, uow, paymentGateway, clock }),
   learning: createLearningService({ ...repos, clock, generateCode: randomCodeGenerator }),
   review: createReviewService(repos),
   admin: createAdminService({ ...repos, clock }),

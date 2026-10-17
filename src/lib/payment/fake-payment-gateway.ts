@@ -32,5 +32,11 @@ export function createFakePaymentGateway({ clock }: { clock: Clock }): PaymentGa
       }
       return { status: "declined", reason: "card_declined" }
     },
+
+    async refund({ reference, amountSatang }) {
+      if (!reference.startsWith("FAKE-") || amountSatang < 0) {
+        throw new Error(`Fake gateway: cannot refund ${reference}`)
+      }
+    },
   }
 }

@@ -15,8 +15,16 @@ export interface OrderRepository {
   markFailed(orderId: number): Promise<void>
   findForUser(orderId: number, userId: string): Promise<Order | null>
   listForUser(userId: string): Promise<Order[]>
+  /** มี order PENDING ที่สร้างหลัง `since` ซึ่งมีคอร์สเหล่านี้อยู่หรือไม่ (กัน checkout ซ้อนกัน) */
+  hasPendingItems(userId: string, courseIds: readonly number[], since: Date): Promise<boolean>
+  /** บันทึก reference ทันทีหลังตัดบัตรสำเร็จ — ถ้าขั้นต่อไปพังจะยังตามเงินได้ */
+  recordPaymentRef(orderId: number, paymentRef: string): Promise<void>
   findItemForUser(itemId: number, userId: string): Promise<OrderItemForRefund | null>
-  markItemRefunded(itemId: number, refundedAt: Date): Promise<void>
+  /**
+   * PAID → REFUNDED แบบมีเงื่อนไขในคำสั่งเขียน (atomic)
+   * คืน false ถ้า item ไม่ได้อยู่ในสถานะ PAID แล้ว (เช่น มีคำขอคืนเงินอีกรายการทำไปก่อน)
+   */
+  markItemRefunded(itemId: number, refundedAt: Date): Promise<boolean>
 }
 
 const itemInclude = {
@@ -143,10 +151,27 @@ export function createPrismaOrderRepository(db: DbClient): OrderRepository {
       return rows.map(toOrder)
     },
 
+    async hasPendingItems(userId, courseIds, since) {
+      const count = await db.orderItem.count({
+        where: {
+          courseId: { in: [...courseIds] },
+          order: { userId, status: "PENDING", createdAt: { gte: since } },
+        },
+      })
+      return count > 0
+    },
+
+    async recordPaymentRef(orderId, paymentRef) {
+      await db.order.update({ where: { id: orderId }, data: { paymentRef } })
+    },
+
     async findItemForUser(itemId, userId) {
       const row = await db.orderItem.findFirst({
         where: { id: itemId, order: { userId } },
-        include: { ...itemInclude, order: { select: { id: true, userId: true, paidAt: true } } },
+        include: {
+          ...itemInclude,
+          order: { select: { id: true, userId: true, paidAt: true, paymentRef: true } },
+        },
       })
       if (!row) return null
       return {
@@ -154,14 +179,16 @@ export function createPrismaOrderRepository(db: DbClient): OrderRepository {
         orderId: row.order.id,
         userId: row.order.userId,
         paidAt: row.order.paidAt,
+        paymentRef: row.order.paymentRef,
       }
     },
 
     async markItemRefunded(itemId, refundedAt) {
-      await db.orderItem.update({
-        where: { id: itemId },
+      const { count } = await db.orderItem.updateMany({
+        where: { id: itemId, status: "PAID" },
         data: { status: "REFUNDED", refundedAt },
       })
+      return count === 1
     },
   }
 }
